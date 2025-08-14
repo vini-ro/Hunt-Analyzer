@@ -721,15 +721,79 @@ class App(tk.Tk):
         ok, falhas = 0, 0
         with closing(self.conn.cursor()) as cur:
             for hid in ids:
-                cur.execute("SELECT raw_text, data, personagem, local FROM Hunts WHERE id=?", (hid,))
+                cur.execute(
+                    """
+                    SELECT raw_text, data, personagem, local, hora_inicio, hora_fim,
+                           duracao_min, raw_xp_gain, xp_gain, loot, supplies,
+                           pagamento, balance, damage, healing
+                    FROM Hunts WHERE id=?
+                    """,
+                    (hid,),
+                )
                 r = cur.fetchone()
-                if not r or not r[0]:
+                if not r:
                     falhas += 1
                     continue
-                raw, data, personagem, local = r
+                (
+                    raw,
+                    data,
+                    personagem,
+                    local,
+                    hora_inicio,
+                    hora_fim,
+                    duracao,
+                    raw_xp,
+                    xp,
+                    loot,
+                    supplies,
+                    pagamento,
+                    balance,
+                    damage,
+                    healing,
+                ) = r
+
+                if not raw:
+                    # reconstruir texto básico caso a hunt seja antiga e não
+                    # possua o conteúdo bruto armazenado
+                    linhas = [
+                        f"Personagem: {personagem}",
+                        f"Local: {local}",
+                    ]
+                    if data:
+                        linhas.append(f"Data: {data}")
+                    if hora_inicio or hora_fim:
+                        linhas.append(
+                            f"Período: {hora_inicio or '?'} - {hora_fim or '?'}"
+                        )
+                    linhas.extend(
+                        [
+                            f"Duração (min): {duracao}",
+                            f"Raw XP Gain: {raw_xp}",
+                            f"XP Gain: {xp}",
+                            f"Loot: {loot}",
+                            f"Supplies: {supplies}",
+                            f"Pagamento: {pagamento}",
+                            f"Balance: {balance}",
+                            f"Damage: {damage}",
+                            f"Healing: {healing}",
+                        ]
+                    )
+                    cur.execute(
+                        "SELECT criatura, quantidade FROM Hunts_Monstros WHERE hunt_id=?",
+                        (hid,),
+                    )
+                    monstros = cur.fetchall()
+                    if monstros:
+                        linhas.append("Monstros:")
+                        for nome, qtd in monstros:
+                            linhas.append(f"  {qtd}x {nome}")
+                    raw = "\n".join(linhas)
+
                 data = data or "semdata"
+
                 def _san(s):
                     return re.sub(r"[^0-9A-Za-z_-]+", "_", s.strip()) if s else ""
+
                 nome_arq = f"hunt_{hid}_{_san(data)}_{_san(personagem)}_{_san(local)}.txt"
                 try:
                     with open(os.path.join(pasta, nome_arq), "w", encoding="utf-8") as f:
