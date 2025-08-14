@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Hunt-Analizer (macOS) - v5
+Hunt-Analizer (macOS) - v5.2
 - SQLite local database
 - Import .txt/.log from Tibia session window
 - Extract and persist Hunts + Monsters
 - Tabs: Inserir | Análises | Hunts
 - Analyses: quick period buttons (Hoje, Esta semana, Este mês, Este ano)
 - Default character preselected; "Todos" is last option
-- Hunts tab: multiselect delete; double-click to edit; batch edit (personagem/local)
+- Hunts tab: multiselect edit/delete/export; batch edit (personagem/local); export raw hunts; clear DB
 """
 
 import sqlite3
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk, simpledialog
 import re
+import os
 from datetime import datetime, timedelta, date
 from contextlib import closing
 
@@ -56,7 +57,8 @@ def conectar_sqlite():
         pagamento INTEGER,
         balance INTEGER,
         damage INTEGER,
-        healing INTEGER
+        healing INTEGER,
+        raw_text TEXT
     )
     """)
     conn.execute("""
@@ -69,6 +71,14 @@ def conectar_sqlite():
         FOREIGN KEY(hunt_id) REFERENCES Hunts(id) ON DELETE CASCADE
     )
     """)
+
+    # migrate older DBs missing raw_text
+    with closing(conn.cursor()) as cur:
+        cur.execute("PRAGMA table_info(Hunts)")
+        cols = [r[1] for r in cur.fetchall()]
+        if "raw_text" not in cols:
+            cur.execute("ALTER TABLE Hunts ADD COLUMN raw_text TEXT")
+            conn.commit()
 
     # ensure default "Elite Vini"
     with closing(conn.cursor()) as cur:
@@ -215,6 +225,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("Hunt-Analizer")
         self.geometry("1180x720")
+        self.minsize(1180, 720)
 
         # style padding for tabs (fix clipping)
         style = ttk.Style()
@@ -317,15 +328,18 @@ class App(tk.Tk):
         ]
         self.metric_vars = {}
         for i, title in enumerate(labels):
+            row, col = divmod(i, 6)
             box = ttk.Frame(grid, borderwidth=1, relief="groove", padding=6)
-            box.grid(row=0, column=i, sticky="nsew", padx=3, pady=3)
+            box.grid(row=row, column=col, sticky="nsew", padx=3, pady=3)
             ttk.Label(box, text=title).pack()
             var = tk.StringVar(value="-")
             ttk.Label(box, textvariable=var, font=("TkDefaultFont", 11, "bold")).pack()
             self.metric_vars[title] = var
 
-        for i in range(len(labels)):
+        for i in range(6):
             grid.grid_columnconfigure(i, weight=1)
+        for r in range(2):
+            grid.grid_rowconfigure(r, weight=1)
 
         # detailed text area below
         self.txt_analises = tk.Text(frm, width=120, height=20)
@@ -495,8 +509,10 @@ class App(tk.Tk):
 
         actions = ttk.Frame(frm)
         actions.pack(fill="x", padx=8, pady=6)
-        ttk.Button(actions, text="Editar selecionadas…", command=self.batch_edit_selected).pack(side="left", padx=4)
+        ttk.Button(actions, text="Editar", command=self.edit_selected_hunt).pack(side="left", padx=4)
+        ttk.Button(actions, text="Exportar selecionadas…", command=self.export_selected_hunts).pack(side="left", padx=4)
         ttk.Button(actions, text="Apagar selecionadas", command=self.delete_selected_hunts).pack(side="left", padx=4)
+        ttk.Button(actions, text="Limpar banco (Hunts)", command=self.clear_hunts_db).pack(side="right", padx=4)
 
         self.refresh_list_filters()
         self.refresh_hunts_list()
@@ -625,6 +641,7 @@ class App(tk.Tk):
                         int(vals["loot"] or 0), int(vals["supplies"] or 0), int(vals["pagamento"] or 0),
                         int(vals["balance"] or 0), int(vals["damage"] or 0), int(vals["healing"] or 0), hid
                     ))
+                    cur2.execute("UPDATE Hunts_Monstros SET personagem=? WHERE hunt_id=?", (vals["personagem"], hid))
                     self.conn.commit()
                 self.refresh_insert_combos()
                 self.recarregar_filtros_analises()
@@ -665,6 +682,7 @@ class App(tk.Tk):
                     add_character(self.conn, new_char)
                     qmarks = ",".join("?" for _ in ids)
                     cur.execute(f"UPDATE Hunts SET personagem=? WHERE id IN ({qmarks})", tuple([new_char] + ids))
+                    cur.execute(f"UPDATE Hunts_Monstros SET personagem=? WHERE hunt_id IN ({qmarks})", tuple([new_char] + ids))
                 if new_loc:
                     add_location(self.conn, new_loc)
                     qmarks = ",".join("?" for _ in ids)
@@ -691,6 +709,45 @@ class App(tk.Tk):
             self.conn.commit()
         self.refresh_hunts_list()
         messagebox.showinfo("Pronto", "Hunts apagadas.")
+
+    def export_selected_hunts(self):
+        ids = self._get_selected_ids()
+        if not ids:
+            messagebox.showwarning("Aviso", "Selecione ao menos uma hunt.")
+            return
+        pasta = filedialog.askdirectory(title="Selecione a pasta de destino")
+        if not pasta:
+            return
+        ok, falhas = 0, 0
+        with closing(self.conn.cursor()) as cur:
+            for hid in ids:
+                cur.execute("SELECT raw_text, data, personagem, local FROM Hunts WHERE id=?", (hid,))
+                r = cur.fetchone()
+                if not r or not r[0]:
+                    falhas += 1
+                    continue
+                raw, data, personagem, local = r
+                data = data or "semdata"
+                def _san(s):
+                    return re.sub(r"[^0-9A-Za-z_-]+", "_", s.strip()) if s else ""
+                nome_arq = f"hunt_{hid}_{_san(data)}_{_san(personagem)}_{_san(local)}.txt"
+                try:
+                    with open(os.path.join(pasta, nome_arq), "w", encoding="utf-8") as f:
+                        f.write(raw)
+                    ok += 1
+                except Exception:
+                    falhas += 1
+        messagebox.showinfo("Exportação", f"Exportadas: {ok}\nFalhas: {falhas}")
+
+    def clear_hunts_db(self):
+        if not messagebox.askyesno("Confirmar", "Apagar TODAS as hunts e monstros?"):
+            return
+        with closing(self.conn.cursor()) as cur:
+            cur.execute("DELETE FROM Hunts")
+            self.conn.commit()
+        self.refresh_hunts_list()
+        self.recarregar_filtros_analises()
+        messagebox.showinfo("Pronto", "Banco de hunts limpo.")
 
     # ---------- File Ops ----------
     def abrir_arquivo(self):
@@ -763,15 +820,15 @@ class App(tk.Tk):
             valores = (
                 personagem, local, info["data_inicio"] or "", info["hora_inicio"] or "", info["hora_fim"] or "",
                 info["duracao_min"], info["raw_xp_gain"], info["xp_gain"], info["loot"], info["supplies"],
-                pagamento, info["balance"], info["damage"], info["healing"]
+                pagamento, info["balance"], info["damage"], info["healing"], dados_hunt
             )
 
             cur = self.conn.cursor()
             cur.execute("""
                 INSERT INTO Hunts (
                     personagem, local, data, hora_inicio, hora_fim, duracao_min,
-                    raw_xp_gain, xp_gain, loot, supplies, pagamento, balance, damage, healing
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    raw_xp_gain, xp_gain, loot, supplies, pagamento, balance, damage, healing, raw_text
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, valores)
             hunt_id = cur.lastrowid
 
