@@ -18,6 +18,9 @@ import re
 import os
 from datetime import datetime, timedelta, date
 from contextlib import closing
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.dates as mdates
 
 DB_PATH = "tibia_hunts.db"
 
@@ -313,6 +316,7 @@ class App(tk.Tk):
             b.pack(side="left", padx=3)
 
         ttk.Button(top, text="Atualizar", command=self.atualizar_analises).pack(side="left", padx=10)
+        ttk.Button(top, text="Gráfico XP/Balance", command=self.mostrar_grafico).pack(side="left", padx=10)
 
         self.lbl_periodo = ttk.Label(frm, text="Período: (não definido)")
         self.lbl_periodo.pack(anchor="w", padx=12)
@@ -482,6 +486,76 @@ class App(tk.Tk):
         ordered = ordered + ["Todos"]
         self.combo_personagem["values"] = ordered
         self.combo_personagem.set(default_char if default_char else (ordered[0] if ordered else ""))
+
+    def mostrar_grafico(self):
+        pers = self.combo_personagem.get().strip()
+        dt_ini, dt_fim = self._period_limits()
+
+        cur = self.conn.cursor()
+        where = []
+        params = []
+        if pers and pers != "Todos":
+            where.append("personagem = ?")
+            params.append(pers)
+        if dt_ini and dt_fim:
+            where.append("data >= ? AND data <= ?")
+            params.extend([dt_ini.isoformat(), dt_fim.isoformat()])
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+        cur.execute(
+            f"""
+            SELECT data, hora_inicio, raw_xp_gain, balance, duracao_min
+            FROM Hunts
+            {where_sql}
+            ORDER BY data, hora_inicio
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+        if not rows:
+            messagebox.showinfo("Sem dados", "Não há hunts no período selecionado.")
+            return
+
+        datas = []
+        raw_xph = []
+        balanceh = []
+        for data_str, hora_str, raw, balance, minutos in rows:
+            try:
+                if data_str and hora_str:
+                    dt = datetime.strptime(f"{data_str} {hora_str}", "%Y-%m-%d %H:%M:%S")
+                elif data_str:
+                    dt = datetime.strptime(data_str, "%Y-%m-%d")
+                else:
+                    dt = None
+            except Exception:
+                dt = None
+            horas = (minutos or 0) / 60.0
+            datas.append(dt)
+            raw_xph.append((raw or 0) / horas if horas > 0 else 0)
+            balanceh.append((balance or 0) / horas if horas > 0 else 0)
+
+        win = tk.Toplevel(self)
+        win.title("Raw XP e Balance por Hora")
+
+        fig = Figure(figsize=(8, 4), dpi=100)
+        ax = fig.add_subplot(111)
+        if all(d is not None for d in datas):
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+            ax.plot(datas, raw_xph, marker="o", label="Raw XP/h")
+            ax.plot(datas, balanceh, marker="o", label="Balance/h")
+            fig.autofmt_xdate()
+        else:
+            x = list(range(1, len(datas) + 1))
+            ax.plot(x, raw_xph, marker="o", label="Raw XP/h")
+            ax.plot(x, balanceh, marker="o", label="Balance/h")
+            ax.set_xticks(x)
+            ax.set_xlabel("Hunt")
+        ax.legend()
+        ax.set_ylabel("Valor por hora")
+
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
 
     # ---------- Hunts ----------
     def _build_tab_hunts(self):
