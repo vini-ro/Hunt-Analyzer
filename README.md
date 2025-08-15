@@ -7,7 +7,7 @@ Projeto de estudo em Python voltado à análise de sessões de caça do MMORPG T
 - Extração automatizada de duração, XP, loot, supplies, balance, dano, cura e monstros derrotados via expressões regulares.
 - Persistência local em banco SQLite (`tibia_hunts.db`), com tabelas normalizadas para personagens, locais, hunts e criaturas.
 - Interface gráfica em **Tkinter/ttk**, com abas para Inserção, Análises e gerenciamento de Hunts.
-- Filtros de período (hoje, semana, mês, ano) usando utilitários de `datetime` e geração de métricas como XP/h, lucro/h e kills/h.
+- Filtros de período (hoje, semana, mês, ano) usando utilitários de `datetime` e geração de métricas como XP/h e Balance/h.
 - Visualização gráfica das hunts comparando Raw XP/h e Balance/h com apoio do `matplotlib`.
 - Operações de batch: importação de múltiplos arquivos, edição em lote e exclusão simultânea de registros.
 
