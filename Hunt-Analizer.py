@@ -82,7 +82,9 @@ def conectar_sqlite():
     conn.execute("""
     CREATE TABLE IF NOT EXISTS ImportedFiles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_path TEXT UNIQUE NOT NULL
+        file_path TEXT UNIQUE NOT NULL,
+        hunt_id INTEGER UNIQUE,
+        FOREIGN KEY(hunt_id) REFERENCES Hunts(id) ON DELETE CASCADE
     )
     """)
 
@@ -100,6 +102,22 @@ def conectar_sqlite():
         cols = [r[1] for r in cur.fetchall()]
         if "raw_text" not in cols:
             cur.execute("ALTER TABLE Hunts ADD COLUMN raw_text TEXT")
+            conn.commit()
+
+    # migrate ImportedFiles to include hunt_id and FK
+    with closing(conn.cursor()) as cur:
+        cur.execute("PRAGMA table_info(ImportedFiles)")
+        cols = [r[1] for r in cur.fetchall()]
+        if "hunt_id" not in cols:
+            cur.execute("DROP TABLE ImportedFiles")
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS ImportedFiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT UNIQUE NOT NULL,
+                hunt_id INTEGER UNIQUE,
+                FOREIGN KEY(hunt_id) REFERENCES Hunts(id) ON DELETE CASCADE
+            )
+            """)
             conn.commit()
 
     # ensure default "Elite Vini"
@@ -919,10 +937,11 @@ class App(tk.Tk):
         with closing(self.conn.cursor()) as cur:
             # Remove todas as hunts e reinicia os ID's
             cur.execute("DELETE FROM Hunts")
+            cur.execute("DELETE FROM ImportedFiles")
             # Resetar os contadores de AUTOINCREMENT para que os próximos
             # registros voltem a começar em 1
             cur.execute(
-                "DELETE FROM sqlite_sequence WHERE name IN ('Hunts', 'Hunts_Monstros')"
+                "DELETE FROM sqlite_sequence WHERE name IN ('Hunts', 'Hunts_Monstros', 'ImportedFiles')"
             )
             self.conn.commit()
         self.refresh_hunts_list()
@@ -1073,8 +1092,8 @@ class App(tk.Tk):
 
             if orig_path:
                 cur.execute(
-                    "INSERT OR IGNORE INTO ImportedFiles (file_path) VALUES (?)",
-                    (orig_path,),
+                    "INSERT OR REPLACE INTO ImportedFiles (file_path, hunt_id) VALUES (?, ?)",
+                    (orig_path, hunt_id),
                 )
 
             self.conn.commit()
