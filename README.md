@@ -22,6 +22,17 @@ python Hunt-Analizer.py
 ```
 O script cria ou reutiliza automaticamente o banco `tibia_hunts.db` no diretório raiz.
 
+## Empacotando como aplicativo macOS
+
+Para gerar um pacote `.app` utilize o [py2app](https://py2app.readthedocs.io/):
+
+```bash
+pip install py2app
+python setup.py py2app
+```
+
+O resultado será criado em `dist/Hunt-Analizer.app`.
+
 ## Estrutura do banco de dados
 - `Characters`: personagens cadastrados e personagem padrão.
 - `Locations`: locais de caça.

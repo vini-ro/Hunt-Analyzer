@@ -120,15 +120,20 @@ def conectar_sqlite():
             """)
             conn.commit()
 
-    # ensure default "Elite Vini"
+    # ensure a default character exists
     with closing(conn.cursor()) as cur:
-        cur.execute("SELECT COUNT(*) FROM Characters WHERE nome = ?", ("Elite Vini",))
+        cur.execute("SELECT COUNT(*) FROM Characters")
         if cur.fetchone()[0] == 0:
-            cur.execute("INSERT INTO Characters (nome, is_default) VALUES (?, 1)", ("Elite Vini",))
+            cur.execute(
+                "INSERT INTO Characters (nome, is_default) VALUES (?, 1)",
+                ("Nerdola Farmador",),
+            )
         else:
             cur.execute("SELECT COUNT(*) FROM Characters WHERE is_default = 1")
             if cur.fetchone()[0] == 0:
-                cur.execute("UPDATE Characters SET is_default = 1 WHERE nome = ?", ("Elite Vini",))
+                cur.execute(
+                    "UPDATE Characters SET is_default = 1 WHERE id = (SELECT id FROM Characters LIMIT 1)"
+                )
     conn.commit()
     return conn
 
@@ -417,19 +422,19 @@ class App(tk.Tk):
         if mode == "hoje":
             ini = hoje
             fim = hoje
-            label = f"{ini.isoformat()} a {fim.isoformat()} (Hoje)"
+            label = f"{ini.strftime('%d-%m-%Y')} a {fim.strftime('%d-%m-%Y')} (Hoje)"
         elif mode == "semana":
             ini = hoje - timedelta(days=(hoje.weekday()))  # Monday
             fim = hoje
-            label = f"{ini.isoformat()} a {fim.isoformat()} (Esta semana)"
+            label = f"{ini.strftime('%d-%m-%Y')} a {fim.strftime('%d-%m-%Y')} (Esta semana)"
         elif mode == "mes":
             ini = hoje.replace(day=1)
             fim = hoje
-            label = f"{ini.isoformat()} a {fim.isoformat()} (Este mês)"
+            label = f"{ini.strftime('%d-%m-%Y')} a {fim.strftime('%d-%m-%Y')} (Este mês)"
         elif mode == "ano":
             ini = date(hoje.year, 1, 1)
             fim = hoje
-            label = f"{ini.isoformat()} a {fim.isoformat()} (Este ano)"
+            label = f"{ini.strftime('%d-%m-%Y')} a {fim.strftime('%d-%m-%Y')} (Este ano)"
         else:
             ini, fim, label = None, None, "Período: (não definido)"
         self.custom_start, self.custom_end = ini, fim
@@ -521,7 +526,9 @@ class App(tk.Tk):
         w("===== Detalhes =====")
         w(f"Personagem: {pers if pers else '(não definido)'}")
         if dt_ini and dt_fim:
-            w(f"Período: {dt_ini.isoformat()} a {dt_fim.isoformat()}")
+            w(
+                f"Período: {dt_ini.strftime('%d-%m-%Y')} a {dt_fim.strftime('%d-%m-%Y')}"
+            )
         else:
             w("Período: Tudo")
         w()
@@ -594,7 +601,7 @@ class App(tk.Tk):
         fig = Figure(figsize=(8, 4), dpi=100)
         ax = fig.add_subplot(111)
         if all(d is not None for d in datas):
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%d-%m-%Y"))
             ax.plot(datas, raw_xph, marker="o", label="Raw XP/h")
             ax.plot(datas, balanceh, marker="o", label="Balance/h")
             fig.autofmt_xdate()
@@ -692,8 +699,14 @@ class App(tk.Tk):
             mins = r[4] or 0
             hh = int(mins // 60); mm = int(mins % 60)
             dur = f"{hh:02d}:{mm:02d}h"
+            data_fmt = ""
+            if r[1]:
+                try:
+                    data_fmt = datetime.strptime(r[1], "%Y-%m-%d").strftime("%d-%m-%Y")
+                except Exception:
+                    data_fmt = r[1]
             self.tree.insert("", "end", values=(
-                r[0], r[1], r[2], r[3], dur, r[5], r[6],
+                r[0], data_fmt, r[2], r[3], dur, r[5], r[6],
                 r[7], r[8], r[9], r[10], r[11]
             ))
 
@@ -732,7 +745,7 @@ class App(tk.Tk):
         win.geometry("600x520")
 
         labels = [
-            ("Personagem","personagem"), ("Local","local"), ("Data (YYYY-MM-DD)","data"),
+            ("Personagem","personagem"), ("Local","local"), ("Data (DD-MM-YYYY)","data"),
             ("Hora início (HH:MM:SS)","hora_inicio"), ("Hora fim (HH:MM:SS)","hora_fim"),
             ("Duração (min)","duracao_min"), ("Raw XP","raw_xp_gain"), ("XP Gain","xp_gain"),
             ("Loot","loot"), ("Supplies","supplies"), ("Pagamento","pagamento"), ("Balance","balance"),
@@ -750,11 +763,22 @@ class App(tk.Tk):
         data_map = dict(zip(keys, r))
         for k in entries:
             val = data_map.get(k, "")
+            if k == "data" and val:
+                try:
+                    val = datetime.strptime(val, "%Y-%m-%d").strftime("%d-%m-%Y")
+                except Exception:
+                    pass
             entries[k].insert(0, "" if val is None else str(val))
 
         def save_changes():
             try:
                 vals = {k: entries[k].get().strip() for k in entries}
+                if vals["data"]:
+                    try:
+                        vals["data"] = datetime.strptime(vals["data"], "%d-%m-%Y").strftime("%Y-%m-%d")
+                    except ValueError:
+                        messagebox.showerror("Erro", "Data inválida. Use DD-MM-YYYY.")
+                        return
                 add_character(self.conn, vals["personagem"])
                 add_location(self.conn, vals["local"])
                 with closing(self.conn.cursor()) as cur2:
@@ -888,7 +912,11 @@ class App(tk.Tk):
                         f"Local: {local}",
                     ]
                     if data:
-                        linhas.append(f"Data: {data}")
+                        try:
+                            data_fmt = datetime.strptime(data, "%Y-%m-%d").strftime("%d-%m-%Y")
+                        except Exception:
+                            data_fmt = data
+                        linhas.append(f"Data: {data_fmt}")
                     if hora_inicio or hora_fim:
                         linhas.append(
                             f"Período: {hora_inicio or '?'} - {hora_fim or '?'}"
