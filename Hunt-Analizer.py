@@ -304,6 +304,7 @@ class App(tk.Tk):
         ttk.Label(top, text="Personagem").pack(side="left")
         self.combo_personagem = ttk.Combobox(top, width=28, state="readonly")
         self.combo_personagem.pack(side="left", padx=6)
+        self.combo_personagem.bind("<<ComboboxSelected>>", lambda e: self.atualizar_analises())
 
         # period buttons
         btns = ttk.Frame(top)
@@ -315,7 +316,6 @@ class App(tk.Tk):
         for b in (self.btn_hoje, self.btn_semana, self.btn_mes, self.btn_ano):
             b.pack(side="left", padx=3)
 
-        ttk.Button(top, text="Atualizar", command=self.atualizar_analises).pack(side="left", padx=10)
         ttk.Button(top, text="Gráfico XP/Balance", command=self.mostrar_grafico).pack(side="left", padx=10)
 
         self.lbl_periodo = ttk.Label(frm, text="Período: (não definido)")
