@@ -881,7 +881,13 @@ class App(tk.Tk):
         if not messagebox.askyesno("Confirmar", "Apagar TODAS as hunts e monstros?"):
             return
         with closing(self.conn.cursor()) as cur:
+            # Remove todas as hunts e reinicia os ID's
             cur.execute("DELETE FROM Hunts")
+            # Resetar os contadores de AUTOINCREMENT para que os próximos
+            # registros voltem a começar em 1
+            cur.execute(
+                "DELETE FROM sqlite_sequence WHERE name IN ('Hunts', 'Hunts_Monstros')"
+            )
             self.conn.commit()
         self.refresh_hunts_list()
         self.recarregar_filtros_analises()
