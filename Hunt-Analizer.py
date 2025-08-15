@@ -308,10 +308,10 @@ class App(tk.Tk):
         # period buttons
         btns = ttk.Frame(top)
         btns.pack(side="left", padx=12)
-        self.btn_hoje = ttk.Button(btns, text="Hoje", command=lambda: self.set_period("hoje"))
-        self.btn_semana = ttk.Button(btns, text="Esta semana", command=lambda: self.set_period("semana"))
-        self.btn_mes = ttk.Button(btns, text="Este mês", command=lambda: self.set_period("mes"))
-        self.btn_ano = ttk.Button(btns, text="Este ano", command=lambda: self.set_period("ano"))
+        self.btn_hoje = ttk.Button(btns, text="Hoje", command=lambda: self.set_period("hoje", True))
+        self.btn_semana = ttk.Button(btns, text="Esta semana", command=lambda: self.set_period("semana", True))
+        self.btn_mes = ttk.Button(btns, text="Este mês", command=lambda: self.set_period("mes", True))
+        self.btn_ano = ttk.Button(btns, text="Este ano", command=lambda: self.set_period("ano", True))
         for b in (self.btn_hoje, self.btn_semana, self.btn_mes, self.btn_ano):
             b.pack(side="left", padx=3)
 
@@ -354,7 +354,7 @@ class App(tk.Tk):
         self.set_period("mes")
         self.atualizar_analises()
 
-    def set_period(self, mode):
+    def set_period(self, mode, auto_refresh=False):
         self.period_mode = mode
         hoje = date.today()
         if mode == "hoje":
@@ -377,6 +377,8 @@ class App(tk.Tk):
             ini, fim, label = None, None, "Período: (não definido)"
         self.custom_start, self.custom_end = ini, fim
         self.lbl_periodo.config(text=f"Período: {label}")
+        if auto_refresh:
+            self.atualizar_analises()
 
     def _period_limits(self):
         if self.period_mode in ("hoje", "semana", "mes", "ano"):
