@@ -327,8 +327,8 @@ class App(tk.Tk):
 
         labels = [
             "Hunts", "Horas", "XP total", "XP/h", "Raw XP", "Raw XP/h",
-            "Lucro (Loot - Supplies - Pagto)", "Lucro/h",
-            "Balance bruto", "Monstros", "Monstros/h"
+            "Balance", "Balance/h",
+            "Monstros"
         ]
         self.metric_vars = {}
         for i, title in enumerate(labels):
@@ -411,12 +411,11 @@ class App(tk.Tk):
         where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
         cur.execute(f"""
-            SELECT 
+            SELECT
                 COUNT(*),
                 COALESCE(SUM(h.duracao_min),0),
                 COALESCE(SUM(h.xp_gain),0),
                 COALESCE(SUM(h.raw_xp_gain),0),
-                COALESCE(SUM(h.loot),0),
                 COALESCE(SUM(h.supplies),0),
                 COALESCE(SUM(h.pagamento),0),
                 COALESCE(SUM(h.balance),0)
@@ -424,7 +423,7 @@ class App(tk.Tk):
             {where_sql}
         """, params)
         row = cur.fetchone()
-        qtd, total_min, total_xp, total_raw_xp, total_loot, total_supplies, total_pagto, total_balance = row
+        qtd, total_min, total_xp, total_raw_xp, total_supplies, total_pagto, total_balance = row
 
         # kills
         cur.execute(f"""
@@ -437,9 +436,7 @@ class App(tk.Tk):
         horas = total_min / 60.0 if total_min > 0 else 0.0
         xp_h = (total_xp / horas) if horas > 0 else 0.0
         raw_xp_h = (total_raw_xp / horas) if horas > 0 else 0.0
-        lucro_total = (total_loot - total_supplies - total_pagto)
-        lucro_h = (lucro_total / horas) if horas > 0 else 0.0
-        kills_h = (total_kills / horas) if horas > 0 else 0.0
+        balance_h = (total_balance / horas) if horas > 0 else 0.0
 
         # metrics panel
         data_map = {
@@ -449,11 +446,9 @@ class App(tk.Tk):
             "XP/h": self._fmt(xp_h),
             "Raw XP": self._fmt(total_raw_xp),
             "Raw XP/h": self._fmt(raw_xp_h),
-            "Lucro (Loot - Supplies - Pagto)": self._fmt(lucro_total),
-            "Lucro/h": self._fmt(lucro_h),
-            "Balance bruto": self._fmt(total_balance),
+            "Balance": self._fmt(total_balance),
+            "Balance/h": self._fmt(balance_h),
             "Monstros": self._fmt(total_kills),
-            "Monstros/h": self._fmt(kills_h),
         }
         for k, v in data_map.items():
             if k in self.metric_vars:
@@ -475,9 +470,9 @@ class App(tk.Tk):
         w(f"Duração total: {int(total_min//60):02d}h{int(total_min%60):02d}m")
         w(f"XP total: {self._fmt(total_xp)} | XP/h: {self._fmt(xp_h)}")
         w(f"Raw XP: {self._fmt(total_raw_xp)} | Raw XP/h: {self._fmt(raw_xp_h)}")
-        w(f"Lucro total: {self._fmt(lucro_total)} | Lucro/h: {self._fmt(lucro_h)}")
-        w(f"Supplies: {self._fmt(total_supplies)} | Pagamento: {self._fmt(total_pagto)} | Balance bruto: {self._fmt(total_balance)}")
-        w(f"Monstros: {self._fmt(total_kills)} | Monstros/h: {self._fmt(kills_h)}")
+        w(f"Balance total: {self._fmt(total_balance)} | Balance/h: {self._fmt(balance_h)}")
+        w(f"Supplies: {self._fmt(total_supplies)} | Pagamento: {self._fmt(total_pagto)}")
+        w(f"Monstros: {self._fmt(total_kills)}")
 
     def recarregar_filtros_analises(self):
         chars = list_characters(self.conn)
