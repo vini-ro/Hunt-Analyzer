@@ -33,6 +33,17 @@ python setup.py py2app
 
 O resultado será criado em `dist/Hunt-Analizer.app`.
 
+## Empacotando com PyInstaller
+
+Para gerar um executável standalone utilize o [PyInstaller](https://pyinstaller.org/):
+
+```bash
+pip install pyinstaller
+pyinstaller Hunt-Analizer.spec
+```
+
+O binário será criado em `dist/Hunt-Analizer/` já configurado com um ícone temático de Tibia gerado automaticamente.
+
 ## Estrutura do banco de dados
 - `Characters`: personagens cadastrados e personagem padrão.
 - `Locations`: locais de caça.
