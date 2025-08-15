@@ -4,6 +4,7 @@ Projeto de estudo em Python voltado à análise de sessões de caça do MMORPG T
 
 ## Principais funcionalidades
 - Importação de logs `.txt`/`.log` gerados na janela de sessão do Tibia.
+- Verificação automática de uma pasta de logs predefinida, importando apenas arquivos `Hunting_Session_` ainda não presentes no banco.
 - Extração automatizada de duração, XP, loot, supplies, balance, dano, cura e monstros derrotados via expressões regulares.
 - Persistência local em banco SQLite (`tibia_hunts.db`), com tabelas normalizadas para personagens, locais, hunts e criaturas.
 - Interface gráfica em **Tkinter/ttk**, com abas para Inserção, Análises e gerenciamento de Hunts.

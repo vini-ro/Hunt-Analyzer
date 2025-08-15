@@ -22,6 +22,9 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
 
+
+# configuration / DB helpers
+
 DB_PATH = "tibia_hunts.db"
 
 
@@ -72,6 +75,22 @@ def conectar_sqlite():
         criatura TEXT NOT NULL,
         quantidade INTEGER NOT NULL,
         FOREIGN KEY(hunt_id) REFERENCES Hunts(id) ON DELETE CASCADE
+    )
+    """)
+
+    # Imported files control
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS ImportedFiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT UNIQUE NOT NULL
+    )
+    """)
+
+    # Settings storage
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS Settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
     )
     """)
 
@@ -150,6 +169,23 @@ def add_location(conn, nome):
 def delete_location(conn, nome):
     with closing(conn.cursor()) as cur:
         cur.execute("DELETE FROM Locations WHERE nome = ?", (nome,))
+    conn.commit()
+
+
+def get_setting(conn, key):
+    with closing(conn.cursor()) as cur:
+        cur.execute("SELECT value FROM Settings WHERE key=?", (key,))
+        r = cur.fetchone()
+        return r[0] if r else None
+
+
+def set_setting(conn, key, value):
+    with closing(conn.cursor()) as cur:
+        cur.execute(
+            "INSERT INTO Settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
     conn.commit()
 
 
@@ -238,6 +274,7 @@ class App(tk.Tk):
             pass
 
         self.conn = conectar_sqlite()
+        self.log_folder = get_setting(self.conn, "log_folder") or ""
         self.period_mode = "mes"  # default button
         self.custom_start = None
         self.custom_end = None
@@ -282,6 +319,8 @@ class App(tk.Tk):
         btns.grid(row=0, column=3, rowspan=2, padx=5, pady=5, sticky="w")
         ttk.Button(btns, text="Abrir Arquivo Hunt", command=self.abrir_arquivo).pack(fill="x", pady=2)
         ttk.Button(btns, text="Importar Arquivo(s) …", command=self.importar_arquivos).pack(fill="x", pady=2)
+        ttk.Button(btns, text="Definir Pasta Logs", command=self.definir_pasta_logs).pack(fill="x", pady=2)
+        ttk.Button(btns, text="Checar Pasta Logs", command=self.checar_pasta_logs).pack(fill="x", pady=2)
 
         ttk.Label(frm, text="Conteúdo da Hunt").grid(row=2, column=0, sticky="nw", padx=5, pady=(10, 0))
         self.text_dados = tk.Text(frm, width=110, height=25)
@@ -904,6 +943,46 @@ class App(tk.Tk):
         self.text_dados.delete("1.0", tk.END)
         self.text_dados.insert(tk.END, conteudo)
 
+    def definir_pasta_logs(self):
+        caminho = filedialog.askdirectory(title="Selecione a pasta de logs do Tibia")
+        if caminho:
+            set_setting(self.conn, "log_folder", caminho)
+            self.log_folder = caminho
+            messagebox.showinfo("Pasta definida", caminho)
+
+    def checar_pasta_logs(self):
+        if not self.log_folder:
+            self.definir_pasta_logs()
+            if not self.log_folder:
+                return
+        if not os.path.isdir(self.log_folder):
+            messagebox.showerror("Erro", f"Pasta '{self.log_folder}' não existe.")
+            return
+        arquivos = [
+            os.path.join(self.log_folder, f)
+            for f in os.listdir(self.log_folder)
+            if f.startswith("Hunting_Session_") and f.lower().endswith((".txt", ".log"))
+        ]
+        if not arquivos:
+            messagebox.showinfo("Importação", "Nenhum arquivo Hunting_Session_ encontrado.")
+            return
+        ok, falhas = 0, 0
+        for c in sorted(arquivos):
+            try:
+                with open(c, "r", encoding="utf-8") as f:
+                    conteudo = f.read()
+            except UnicodeDecodeError:
+                with open(c, "r", encoding="latin-1") as f:
+                    conteudo = f.read()
+            if self._salvar_hunt(conteudo, orig_path=c):
+                ok += 1
+            else:
+                falhas += 1
+        self.refresh_insert_combos()
+        self.recarregar_filtros_analises()
+        self.refresh_hunts_list()
+        messagebox.showinfo("Importação", f"Novos: {ok}\nIgnorados: {falhas}")
+
     def importar_arquivos(self):
         caminhos = filedialog.askopenfilenames(
             title="Selecione 1 ou mais arquivos de Hunt",
@@ -919,7 +998,7 @@ class App(tk.Tk):
             except UnicodeDecodeError:
                 with open(c, "r", encoding="latin-1") as f:
                     conteudo = f.read()
-            if self._salvar_hunt(conteudo):
+            if self._salvar_hunt(conteudo, orig_path=c):
                 ok += 1
             else:
                 falhas += 1
@@ -943,8 +1022,14 @@ class App(tk.Tk):
             self.refresh_hunts_list()
             messagebox.showinfo("Sucesso", "Hunt salva com sucesso!")
 
-    def _salvar_hunt(self, dados_hunt, personagem=None, local=None):
+    def _salvar_hunt(self, dados_hunt, personagem=None, local=None, orig_path=None):
         try:
+            cur = self.conn.cursor()
+            if orig_path:
+                cur.execute("SELECT 1 FROM ImportedFiles WHERE file_path=?", (orig_path,))
+                if cur.fetchone():
+                    return False
+
             info = extrair_dados_hunt(dados_hunt)
             if not personagem:
                 personagem = get_default_character(self.conn) or "Desconhecido"
@@ -962,22 +1047,33 @@ class App(tk.Tk):
                 pagamento, info["balance"], info["damage"], info["healing"], dados_hunt
             )
 
-            cur = self.conn.cursor()
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO Hunts (
                     personagem, local, data, hora_inicio, hora_fim, duracao_min,
                     raw_xp_gain, xp_gain, loot, supplies, pagamento, balance, damage, healing, raw_text
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, valores)
+                """,
+                valores,
+            )
             hunt_id = cur.lastrowid
 
             # Monstros
             monstros = extrair_monstros(dados_hunt)
             for nome, qtd in monstros:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO Hunts_Monstros (hunt_id, personagem, criatura, quantidade)
                     VALUES (?, ?, ?, ?)
-                """, (hunt_id, personagem, nome, qtd))
+                    """,
+                    (hunt_id, personagem, nome, qtd),
+                )
+
+            if orig_path:
+                cur.execute(
+                    "INSERT OR IGNORE INTO ImportedFiles (file_path) VALUES (?)",
+                    (orig_path,),
+                )
 
             self.conn.commit()
             return True
