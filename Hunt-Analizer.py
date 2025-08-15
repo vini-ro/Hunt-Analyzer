@@ -16,16 +16,30 @@ import tkinter as tk
 from tkinter import messagebox, filedialog, ttk, simpledialog
 import re
 import os
+import sys
+from pathlib import Path
 from datetime import datetime, timedelta, date
 from contextlib import closing
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
 
+from app_icon import ICON_FILENAME, ensure_icon
+
 
 # configuration / DB helpers
 
 DB_PATH = "tibia_hunts.db"
+
+ensure_icon()
+
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = Path(__file__).parent
+    return Path(base_path) / relative_path
 
 
 # -------------------------
@@ -288,6 +302,12 @@ class App(tk.Tk):
         self.title("Hunt-Analizer")
         self.geometry("1180x720")
         self.minsize(1180, 720)
+
+        icon_file = resource_path(ICON_FILENAME)
+        try:
+            self.iconbitmap(str(icon_file))
+        except Exception:
+            pass
 
         # style padding for tabs (fix clipping)
         style = ttk.Style()
