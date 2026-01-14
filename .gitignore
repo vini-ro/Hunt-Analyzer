@@ -1,2 +1,25 @@
 tibia-analyzer.ico
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv312/
+venv/
+env/
+.env
+
+# Database
+tibia_hunts.db
+
+# macOS
+.DS_Store
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# IDEs
+.vscode/
+.idea/

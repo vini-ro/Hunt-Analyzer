@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Users/Vinicius/DEV/Python/Tibia/Hunt-Analyzer/venv312/bin/python3
 # -*- coding: utf-8 -*-
 """
 Hunt-Analizer (macOS) - v5.2
@@ -24,7 +24,19 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
 
-from app_icon import ICON_FILENAME, ensure_icon
+import sys
+from pathlib import Path
+
+# Ícone do app (usado no bundle do macOS)
+ICON_FILENAME = "tibia-analyzer.icns"
+
+def ensure_icon():
+    """
+    Retorna o caminho do ícone, tanto no código fonte quanto dentro do bundle PyInstaller.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    return base / ICON_FILENAME
+
 
 
 # configuration / DB helpers
@@ -300,8 +312,21 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Hunt-Analizer")
-        self.geometry("1180x720")
+        
+        self.conn = conectar_sqlite()
+        
+        # Restore geometry
+        saved_geo = get_setting(self.conn, "window_geometry")
+        if saved_geo:
+            self.geometry(saved_geo)
+        else:
+            # Default to maximized-ish
+            w = self.winfo_screenwidth()
+            h = self.winfo_screenheight()
+            self.geometry(f"{w}x{h}+0+0")
+
         self.minsize(1180, 720)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         icon_file = resource_path(ICON_FILENAME)
         try:
@@ -316,13 +341,20 @@ class App(tk.Tk):
         except Exception:
             pass
 
-        self.conn = conectar_sqlite()
         self.log_folder = get_setting(self.conn, "log_folder") or ""
         self.period_mode = "mes"  # default button
         self.custom_start = None
         self.custom_end = None
 
         self._build_ui()
+
+    def on_close(self):
+        try:
+            geo = self.geometry()
+            set_setting(self.conn, "window_geometry", geo)
+        except Exception:
+            pass
+        self.destroy()
 
     # ---------- UI ----------
     def _build_ui(self):
@@ -398,6 +430,17 @@ class App(tk.Tk):
         for b in (self.btn_hoje, self.btn_semana, self.btn_mes, self.btn_ano):
             b.pack(side="left", padx=3)
 
+        # Date range manual
+        dates_frm = ttk.Frame(top)
+        dates_frm.pack(side="left", padx=12)
+        ttk.Label(dates_frm, text="De:").pack(side="left")
+        self.entry_dt_ini = ttk.Entry(dates_frm, width=11)
+        self.entry_dt_ini.pack(side="left", padx=2)
+        ttk.Label(dates_frm, text="Até:").pack(side="left")
+        self.entry_dt_fim = ttk.Entry(dates_frm, width=11)
+        self.entry_dt_fim.pack(side="left", padx=2)
+        ttk.Button(dates_frm, text="Filtrar", command=self.atualizar_analises).pack(side="left", padx=4)
+
         ttk.Button(top, text="Gráfico XP/Balance", command=self.mostrar_grafico).pack(side="left", padx=10)
 
         self.lbl_periodo = ttk.Label(frm, text="Período: (não definido)")
@@ -457,15 +500,35 @@ class App(tk.Tk):
             label = f"{ini.strftime('%d-%m-%Y')} a {fim.strftime('%d-%m-%Y')} (Este ano)"
         else:
             ini, fim, label = None, None, "Período: (não definido)"
-        self.custom_start, self.custom_end = ini, fim
+        
+        if ini and fim:
+            self.entry_dt_ini.delete(0, tk.END)
+            self.entry_dt_ini.insert(0, ini.strftime("%d-%m-%Y"))
+            self.entry_dt_fim.delete(0, tk.END)
+            self.entry_dt_fim.insert(0, fim.strftime("%d-%m-%Y"))
+        else:
+            # If mode is None or unknown, maybe clear? Or leave as is?
+            # Let's leave as is if not setting a specific preset
+            pass
+
         self.lbl_periodo.config(text=f"Período: {label}")
         if auto_refresh:
             self.atualizar_analises()
 
     def _period_limits(self):
-        if self.period_mode in ("hoje", "semana", "mes", "ano"):
-            return self.custom_start, self.custom_end
-        return None, None
+        # Read from entries instead of relying on self.period_mode
+        dt_ini_str = self.entry_dt_ini.get().strip()
+        dt_fim_str = self.entry_dt_fim.get().strip()
+        
+        dt_ini, dt_fim = None, None
+        try:
+            if dt_ini_str:
+                dt_ini = datetime.strptime(dt_ini_str, "%d-%m-%Y").date()
+            if dt_fim_str:
+                dt_fim = datetime.strptime(dt_fim_str, "%d-%m-%Y").date()
+        except ValueError:
+            pass
+        return dt_ini, dt_fim
 
     def _fmt(self, n):
         try:
@@ -478,7 +541,7 @@ class App(tk.Tk):
 
     def atualizar_analises(self):
         # ensure start/end per current mode
-        self.set_period(self.period_mode)
+        # self.set_period(self.period_mode) # Removed to allow manual override
 
         pers = self.combo_personagem.get().strip()
         dt_ini, dt_fim = self._period_limits()
@@ -557,7 +620,7 @@ class App(tk.Tk):
         w(f"XP total: {self._fmt(total_xp)} | XP/h: {self._fmt(xp_h)}")
         w(f"Raw XP: {self._fmt(total_raw_xp)} | Raw XP/h: {self._fmt(raw_xp_h)}")
         w(f"Balance total: {self._fmt(total_balance)} | Balance/h: {self._fmt(balance_h)}")
-        w(f"Supplies: {self._fmt(total_supplies)} | Pagamento: {self._fmt(total_pagto)}")
+        w(f"Supplies: {self._fmt(total_supplies)}")
         w(f"Monstros: {self._fmt(total_kills)}")
 
     def recarregar_filtros_analises(self):
@@ -660,7 +723,7 @@ class App(tk.Tk):
         self.tree.pack(fill="both", expand=True, padx=8, pady=6)
 
         # double-click to edit
-        self.tree.bind("<Double-1>", lambda e: self.edit_selected_hunt())
+        self.tree.bind("<Double-1>", self.edit_selected_hunt)
 
         actions = ttk.Frame(frm)
         actions.pack(fill="x", padx=8, pady=6)
@@ -739,7 +802,99 @@ class App(tk.Tk):
                 ids.append(int(vals[0]))
         return ids
 
-    def edit_selected_hunt(self):
+    def show_hunt_stats(self, event=None):
+        if event:
+            # ensure the item clicked is selected
+            try:
+                item = self.tree.identify_row(event.y)
+                if item:
+                    self.tree.selection_set(item)
+            except Exception:
+                pass
+
+        ids = self._get_selected_ids()
+        if not ids:
+            return
+        hid = ids[0]
+        
+        with closing(self.conn.cursor()) as cur:
+            cur.execute("""
+                SELECT id, personagem, local, data, hora_inicio, hora_fim, duracao_min,
+                       raw_xp_gain, xp_gain, loot, supplies, pagamento, balance, damage, healing
+                FROM Hunts WHERE id = ?
+            """, (hid,))
+            r = cur.fetchone()
+            
+            # Get monsters
+            cur.execute("""
+                SELECT nome, quantidade FROM Hunts_Monstros WHERE hunt_id = ? ORDER BY quantidade DESC
+            """, (hid,))
+            monsters = cur.fetchall()
+
+        if not r:
+            return
+
+        # Unpack
+        (hid, pers, loc, dt, h_ini, h_fim, dur_min, 
+         raw_xp, xp, loot, supplies, pagto, bal, dmg, heal) = r
+         
+        # Calculate rates
+        hours = (dur_min or 0) / 60.0
+        xp_h = (xp or 0) / hours if hours > 0 else 0
+        raw_xp_h = (raw_xp or 0) / hours if hours > 0 else 0
+        bal_h = (bal or 0) / hours if hours > 0 else 0
+        
+        # Format date
+        dt_fmt = dt
+        try:
+            dt_fmt = datetime.strptime(dt, "%Y-%m-%d").strftime("%d-%m-%Y")
+        except: pass
+
+        win = tk.Toplevel(self)
+        win.title(f"Detalhes da Hunt #{hid}")
+        win.geometry("400x500")
+        
+        txt = tk.Text(win, wrap="word", padx=10, pady=10)
+        txt.pack(fill="both", expand=True)
+        
+        def w(s):
+            txt.insert(tk.END, s + "\n")
+            
+        w(f"ID: {hid}")
+        w(f"Personagem: {pers}")
+        w(f"Local: {loc}")
+        w(f"Data: {dt_fmt}")
+        w(f"Horário: {h_ini} - {h_fim}")
+        w(f"Duração: {int(dur_min//60):02d}h{int(dur_min%60):02d}m")
+        w("-" * 30)
+        w(f"XP Total: {self._fmt(xp)}")
+        w(f"XP/h: {self._fmt(xp_h)}")
+        w(f"Raw XP: {self._fmt(raw_xp)}")
+        w(f"Raw XP/h: {self._fmt(raw_xp_h)}")
+        w("-" * 30)
+        w(f"Loot: {self._fmt(loot)}")
+        w(f"Supplies: {self._fmt(supplies)}")
+        w(f"Balance: {self._fmt(bal)}")
+        w(f"Balance/h: {self._fmt(bal_h)}")
+        w("-" * 30)
+        w(f"Damage: {self._fmt(dmg)}")
+        w(f"Healing: {self._fmt(heal)}")
+        w("-" * 30)
+        w("Monstros:")
+        for m_name, m_qtd in monsters:
+            w(f"  {m_qtd}x {m_name}")
+            
+        txt.config(state="disabled")
+
+    def edit_selected_hunt(self, event=None):
+        if event:
+            try:
+                item = self.tree.identify_row(event.y)
+                if item:
+                    self.tree.selection_set(item)
+            except Exception:
+                pass
+
         ids = self._get_selected_ids()
         if not ids:
             messagebox.showwarning("Aviso", "Selecione ao menos uma hunt.")
@@ -815,6 +970,7 @@ class App(tk.Tk):
                     ))
                     cur2.execute("UPDATE Hunts_Monstros SET personagem=? WHERE hunt_id=?", (vals["personagem"], hid))
                     self.conn.commit()
+        win.bind("<Return>", lambda e: save_changes())
                 self.refresh_insert_combos()
                 self.recarregar_filtros_analises()
                 self.refresh_hunts_list()
