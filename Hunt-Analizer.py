@@ -970,7 +970,7 @@ class App(tk.Tk):
                     ))
                     cur2.execute("UPDATE Hunts_Monstros SET personagem=? WHERE hunt_id=?", (vals["personagem"], hid))
                     self.conn.commit()
-        win.bind("<Return>", lambda e: save_changes())
+
                 self.refresh_insert_combos()
                 self.recarregar_filtros_analises()
                 self.refresh_hunts_list()
@@ -978,6 +978,8 @@ class App(tk.Tk):
                 messagebox.showinfo("Sucesso", "Hunt atualizada!")
             except Exception as e:
                 messagebox.showerror("Erro", str(e))
+
+        win.bind("<Return>", lambda e: save_changes())
 
         ttk.Button(win, text="Salvar alterações", command=save_changes).grid(row=len(labels), column=0, columnspan=2, pady=10)
 

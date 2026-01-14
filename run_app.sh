@@ -6,4 +6,5 @@
 cd "$(dirname "$0")"
 
 # Executa o app usando o Python do venv
-./venv312/bin/python3 Hunt-Analizer.py
+./venv312/bin/python3 main.py
+
