@@ -41,7 +41,9 @@ def ensure_icon():
 
 # configuration / DB helpers
 
-DB_PATH = "tibia_hunts.db"
+# O banco fica na pasta de dados do usuário (veja src/infrastructure/app_paths.py)
+from src.infrastructure.app_paths import db_path as _db_path
+DB_PATH = _db_path()
 
 ensure_icon()
 
