@@ -80,6 +80,12 @@ class SQLiteHuntRepository(HuntRepository):
                     conn.execute(
                         "UPDATE Characters SET is_default = 1 WHERE id = (SELECT id FROM Characters LIMIT 1)"
                     )
+            
+            # Default Location
+            cursor = conn.execute("SELECT COUNT(*) FROM Locations")
+            if cursor.fetchone()[0] == 0:
+                conn.execute("INSERT INTO Locations (nome) VALUES (?)", ("Desconhecido",))
+
             conn.commit()
 
     def save(self, hunt: Hunt) -> int:

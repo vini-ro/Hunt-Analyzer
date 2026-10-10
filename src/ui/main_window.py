@@ -6,7 +6,7 @@ from typing import Optional, List
 import os
 
 from src.application.interfaces.repository import HuntRepository
-from src.domain.entities import Hunt
+from src.domain.entities import Hunt, Monster
 from src.infrastructure.parser.log_parser import LogParser
 from src.infrastructure.config_repository import ConfigRepository
 
@@ -93,55 +93,90 @@ class MainApp(ctk.CTk):
         self.tab_analises.refresh_options()
         self.tab_hunts.refresh_list()
 
-    def check_auto_import(self):
+    def check_auto_import(self, silent=True):
         folder = self.config.get_log_dir()
         if not folder or not os.path.exists(folder):
+            if not silent:
+                 messagebox.showwarning("Aviso", "Pasta de logs não configurada ou inválida.")
             return
 
         print(f"Checking for new hunts in {folder}...")
-        # Simple check logic: iterate all files, parse, see if exists
-        # To avoid performance hit, maybe we should only check if 'last_modified' > 'last_check'
-        # But user asked to "check for new hunts".
         
-        # We can reuse the import logic from TabInsert if possible, or duplicate/extract it.
-        # Let's import the file content checking logic.
-        
-        new_count = 0
+        imported_count = 0
+        default_char = self.repo.get_default_character() or "Nerdola Farmador"
+
         try:
             for fname in os.listdir(folder):
-                if not (fname.endswith(".txt") or fname.endswith(".log")): continue
+                if not (fname.lower().endswith(".txt") or fname.lower().endswith(".log")): 
+                    continue
                 fpath = os.path.join(folder, fname)
                 
-                # Parsing every file might be slow if many files. 
-                # Optimization: Check if we already have a hunt with same date/start_time/char?
-                # For now, simplest approach:
-                
+                content = ""
                 try:
-                    with open(fpath, "r", encoding="utf-8") as f: content = f.read()
+                    with open(fpath, "r", encoding="utf-8") as f: 
+                        content = f.read()
+                except UnicodeDecodeError:
+                    try:
+                        with open(fpath, "r", encoding="latin-1") as f: 
+                            content = f.read()
+                    except: continue
                 except: continue
                 
+                if not content: continue
+
                 info = self.parser.parse_hunt_data(content)
                 if not info["data_inicio"]: continue
                 
-                # Check existance by Unique constraint (approx)
-                # Ideally Repo should have exists(date, start_time, character)
-                # Doing a lightweight check in memory if list small, or just parse one by one.
+                # Check existence: Character + Date + StartTime
+                # We assume these log files belong to the default character 
+                filters = {
+                    "character": default_char,
+                    "date": info["data_inicio"],
+                    "start_time": info["hora_inicio"]
+                }
                 
-                # To really do "Auto Import" we would need to auto-insert. 
-                # But requirement says "Alert the user if there is new hunts".
-                # It does NOT say "Import them". Just "Alert".
-                
-                # To know if they are "new", we must know if they are in DB.
-                filters = {"date": info["data_inicio"], "start_time": info["hora_inicio"]} 
-                # If char is known, add it.
-                
-                exists = self.repo.get_all(filters)
-                if not exists:
-                    new_count += 1
+                exists_list = self.repo.get_all(filters)
+                if not exists_list:
+                    # Parse and Insert
+                    monsters_data = self.parser.extract_monsters(content)
+                    monsters_entities = [
+                        Monster(name=n, amount=q) for n, q in monsters_data
+                    ]
+
+                    hunt = Hunt(
+                        id=None,
+                        character=default_char,
+                        location="Desconhecido", # Default location
+                        date=info["data_inicio"] or "",
+                        start_time=info["hora_inicio"] or "",
+                        end_time=info["hora_fim"] or "",
+                        duration_min=info["duracao_min"],
+                        raw_xp_gain=info["raw_xp_gain"],
+                        xp_gain=info["xp_gain"],
+                        loot=info["loot"],
+                        supplies=info["supplies"],
+                        balance=info["balance"],
+                        damage=info["damage"],
+                        healing=info["healing"],
+                        raw_text=content,
+                        monsters=monsters_entities
+                    )
+                    
+                    try:
+                        self.repo.save(hunt)
+                        imported_count += 1
+                    except Exception as e:
+                        print(f"Error saving {fname}: {e}")
             
-            if new_count > 0:
-                messagebox.showinfo("Novas Hunts", f"Encontradas {new_count} hunts novas na pasta configurada!\nVá na aba Inserir para importá-las.")
+            if imported_count > 0:
+                self.refresh_all()
+                msg = f"Importadas {imported_count} novas hunts (Personagem: {default_char})."
+                messagebox.showinfo("Auto Importação", msg)
+            elif not silent:
+                messagebox.showinfo("Verificação", f"Nenhuma hunt nova encontrada para {default_char}.")
                 
         except Exception as e:
             print(f"Auto-check error: {e}")
+            if not silent:
+                messagebox.showerror("Erro check", str(e))
 
