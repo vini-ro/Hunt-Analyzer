@@ -6,7 +6,7 @@ Projeto de estudo em Python voltado à análise de sessões de caça do MMORPG T
 - Importação de logs `.txt`/`.log` gerados na janela de sessão do Tibia.
 - Verificação automática de uma pasta de logs predefinida, importando apenas arquivos `Hunting_Session_` ainda não presentes no banco.
 - Extração automatizada de duração, XP, loot, supplies, balance, dano, cura e monstros derrotados via expressões regulares.
-- Persistência local em banco SQLite (`tibia_hunts.db`), com tabelas normalizadas para personagens, locais, hunts e criaturas.
+- Persistência local em banco SQLite (`tibia_hunts.db`), com tabelas normalizadas para personagens, locais, hunts e criaturas, guardado na pasta de dados do sistema.
 - Interface gráfica em **Tkinter/ttk**, com abas para Inserção, Análises e gerenciamento de Hunts.
 - Filtros de período (hoje, semana, mês, ano) usando utilitários de `datetime` e geração de métricas como XP/h e Balance/h.
 - Visualização gráfica das hunts comparando Raw XP/h e Balance/h com apoio do `matplotlib`.
@@ -14,13 +14,35 @@ Projeto de estudo em Python voltado à análise de sessões de caça do MMORPG T
 
 ## Requisitos técnicos
 - Python 3.x com módulos padrão `sqlite3` e `tkinter`.
-- `matplotlib` para geração dos gráficos comparativos.
+- Dependências em `requirements.txt` (customtkinter, matplotlib, pandas, mplcursors…).
 
 ## Execução
 ```bash
-python Hunt-Analizer.py
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python3 main.py
 ```
-O script cria ou reutiliza automaticamente o banco `tibia_hunts.db` no diretório raiz.
+
+### Experimente sem logs próprios
+```bash
+python3 main.py --demo
+```
+Abre uma cópia temporária de `samples/sample_hunts.db`, com 60 hunts fictícias de dois personagens de demonstração. O banco de exemplo pode ser recriado com `python3 samples/generate_sample_db.py`.
+
+Também é possível abrir um banco específico com `python3 main.py --db caminho/para/arquivo.db`.
+
+## Onde ficam os seus dados
+O banco (`tibia_hunts.db`) e a configuração (`config.json`) ficam **fora da pasta do projeto**, na pasta de dados do sistema:
+
+| Sistema | Pasta |
+|---|---|
+| macOS | `~/Library/Application Support/HuntAnalyzer` |
+| Windows | `%APPDATA%\HuntAnalyzer` |
+| Linux | `~/.local/share/HuntAnalyzer` |
+
+Assim, atualizar o projeto com `git pull` não afeta as suas hunts, e os seus dados não vão para o GitHub. Para usar outra pasta, defina a variável de ambiente `HUNT_ANALYZER_DATA_DIR`.
+
+**Migração automática:** se você usava uma versão antiga, com o banco na pasta do projeto, o app **copia** `tibia_hunts.db` e `config.json` para a pasta nova na primeira execução. Os arquivos originais não são apagados.
 
 ## Empacotando como aplicativo macOS
 
