@@ -1,9 +1,11 @@
 import json
 import os
 
+from src.infrastructure.app_paths import config_path as default_config_path
+
 class ConfigRepository:
-    def __init__(self, config_path="config.json"):
-        self.config_path = config_path
+    def __init__(self, config_path=None):
+        self.config_path = config_path or default_config_path()
         self._ensure_config()
 
     def _ensure_config(self):

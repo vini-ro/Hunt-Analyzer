@@ -30,6 +30,8 @@ class InsertTab(ctk.CTkFrame):
         btns.grid(row=0, column=3, rowspan=2, padx=5, pady=5, sticky="w")
         ctk.CTkButton(btns, text="Abrir Arquivo Hunt", command=self.abrir_arquivo).pack(fill="x", pady=2)
         ctk.CTkButton(btns, text="Importar Arquivo(s) …", command=self.importar_arquivos).pack(fill="x", pady=2)
+        ctk.CTkButton(btns, text="Selecionar Pasta Logs", command=self.selecionar_pasta_logs).pack(fill="x", pady=2)
+        ctk.CTkButton(btns, text="Verificar Pasta Logs", command=lambda: self.main_app.check_auto_import(silent=False)).pack(fill="x", pady=2)
         
         ctk.CTkLabel(self, text="Conteúdo da Hunt").grid(row=2, column=0, sticky="nw", padx=5, pady=(10, 0))
         self.text_dados = ctk.CTkTextbox(self, width=800, height=400)
@@ -113,6 +115,14 @@ class InsertTab(ctk.CTkFrame):
 
         messagebox.showinfo("Importação concluída", f"Sucesso: {ok}\nFalhas: {falhas}")
         self.main_app.refresh_all()
+
+    def selecionar_pasta_logs(self):
+        folder = filedialog.askdirectory(title="Selecione a pasta de logs do Tibia")
+        if folder:
+            self.main_app.config.set_log_dir(folder)
+            messagebox.showinfo("Configuração", f"Pasta de logs configurada:\n{folder}")
+            # Trigger check immediately
+            self.main_app.check_auto_import(silent=False)
 
     def salvar_hunt_atual(self):
         dados_hunt = self.text_dados.get("1.0", tk.END).strip()
@@ -253,7 +263,18 @@ class InsertTab(ctk.CTkFrame):
         self.combo_local_insert.configure(values=locs)
         
         default = self.repo.get_default_character()
-        current = self.combo_personagem_insert.get()
-        if not current and default in chars:
+        current_char = self.combo_personagem_insert.get()
+        if not current_char and default in chars:
             self.combo_personagem_insert.set(default)
+        elif not current_char and chars:
+             self.combo_personagem_insert.set(chars[0])
+            
+        current_loc = self.combo_local_insert.get()
+        if not current_loc or current_loc == "CTkComboBox":
+            if "Desconhecido" in locs:
+                self.combo_local_insert.set("Desconhecido")
+            elif locs:
+                self.combo_local_insert.set(locs[0])
+            else:
+                self.combo_local_insert.set("")
 

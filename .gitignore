@@ -23,3 +23,7 @@ dist/
 # IDEs
 .vscode/
 .idea/
+
+# Dados do usuário (ficam em Application Support; veja src/infrastructure/app_paths.py)
+config.json
+_backup/
